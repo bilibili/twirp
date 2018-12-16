@@ -3,7 +3,7 @@
 
 /*
 Package google_protobuf_imports is a generated twirp stub package.
-This code was generated with github.com/twitchtv/twirp/protoc-gen-twirp v5.5.0.
+This code was generated with git.bilibili.co/go/twirp/protoc-gen-twirp v5.5.0.
 
 It is generated from these files:
 	service.proto
@@ -19,8 +19,8 @@ import http "net/http"
 
 import jsonpb "github.com/golang/protobuf/jsonpb"
 import proto "github.com/golang/protobuf/proto"
-import twirp "github.com/twitchtv/twirp"
-import ctxsetters "github.com/twitchtv/twirp/ctxsetters"
+import twirp "git.bilibili.co/go/twirp"
+import ctxsetters "git.bilibili.co/go/twirp/ctxsetters"
 
 import google_protobuf1 "github.com/golang/protobuf/ptypes/wrappers"
 import google_protobuf "github.com/golang/protobuf/ptypes/empty"

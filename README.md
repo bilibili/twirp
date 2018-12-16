@@ -1,4 +1,4 @@
-![Twirp Logo](./logo.png) [![Build Status](https://travis-ci.org/twitchtv/twirp.svg?branch=master)](https://travis-ci.org/twitchtv/twirp) [![Go Report Card](https://goreportcard.com/badge/github.com/twitchtv/twirp)](https://goreportcard.com/report/github.com/twitchtv/twirp) [![GoDoc](https://godoc.org/github.com/twitchtv/twirp?status.svg)](https://godoc.org/github.com/twitchtv/twirp)
+![Twirp Logo](./logo.png) [![Build Status](https://travis-ci.org/twitchtv/twirp.svg?branch=master)](https://travis-ci.org/twitchtv/twirp) [![Go Report Card](https://goreportcard.com/badge/git.bilibili.co/go/twirp)](https://goreportcard.com/report/git.bilibili.co/go/twirp) [![GoDoc](https://godoc.org/git.bilibili.co/go/twirp?status.svg)](https://godoc.org/git.bilibili.co/go/twirp)
 
 ---
 
@@ -33,7 +33,7 @@ is a good read.
 Use `go get` to install the Go client-and-server generator:
 
 ```
-go get github.com/twitchtv/twirp/protoc-gen-twirp
+go get git.bilibili.co/go/twirp/protoc-gen-twirp
 ```
 
 You will also need:
@@ -62,7 +62,7 @@ For other languages, there are third-party generators available:
 | **JavaScript** |    ✓    |         | [github.com/thechriswalker/protoc-gen-twirp_js](https://github.com/thechriswalker/protoc-gen-twirp_js)
 | **JavaScript** |    ✓    |         | [github.com/Xe/twirp-codegens/cmd/protoc-gen-twirp_jsbrowser](https://github.com/Xe/twirp-codegens)
 | **Typescript** |    ✓    |         | [github.com/larrymyers/protoc-gen-twirp_typescript](https://github.com/larrymyers/protoc-gen-twirp_typescript)
-| **Ruby**       |    ✓    |    ✓    | [github.com/twitchtv/twirp-ruby](https://github.com/twitchtv/twirp-ruby)
+| **Ruby**       |    ✓    |    ✓    | [git.bilibili.co/go/twirp-ruby](https://git.bilibili.co/go/twirp-ruby)
 | **Rust**       |    ✓    |    ✓    | [github.com/cretz/prost-twirp](https://github.com/cretz/prost-twirp)
 | **Swagger**    |    ✓    |    ✓    | [github.com/elliots/protoc-gen-twirp_swagger](https://github.com/elliots/protoc-gen-twirp_swagger)
 | **PHP**        |    ✓    |    ✓    | [github.com/twirphp/twirp](https://github.com/twirphp/twirp)
@@ -78,7 +78,7 @@ Gopher slack [here](https://invite.slack.golangbridge.org/).
 ### Releases
 Twirp follows semantic versioning through git tags, and uses Github Releases for
 release notes and upgrade guides:
-[Twirp Releases](https://github.com/twitchtv/twirp/releases)
+[Twirp Releases](https://git.bilibili.co/go/twirp/releases)
 
 ### Contributing
 Check out [CONTRIBUTING.md](./CONTRIBUTING.md) for notes on making contributions.

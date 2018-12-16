@@ -61,7 +61,7 @@ import (
 	"context"
 	"net/http"
 
-	pb "github.com/twitchtv/twirp-example/rpc/helloworld"
+	pb "git.bilibili.co/go/twirp-example/rpc/helloworld"
 )
 
 type HelloWorldServer struct{}
@@ -92,7 +92,7 @@ import (
 	"fmt"
 	"net/http"
 
-	pb "github.com/twitchtv/twirp-example/rpc/helloworld"
+	pb "git.bilibili.co/go/twirp-example/rpc/helloworld"
 )
 
 func main() {

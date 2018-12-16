@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twitchtv/twirp"
+	"git.bilibili.co/go/twirp"
 )
 
 var reqStartTimestampKey = new(int)

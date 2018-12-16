@@ -16,7 +16,7 @@ package main
 import (
 	"context"
 
-	"github.com/twitchtv/twirp/clientcompat/internal/clientcompat"
+	"git.bilibili.co/go/twirp/clientcompat/internal/clientcompat"
 )
 
 type clientCompat struct {

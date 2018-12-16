@@ -17,7 +17,7 @@ will be wrapped with `twirp.InternalErrorWith(err)`, so they are also
 Check the [Errors Spec](spec_v5.md) for more information on error
 codes and the wire protocol.
 
-Also don't be afraid to open the [source code](https://github.com/twitchtv/twirp/blob/master/errors.go)
+Also don't be afraid to open the [source code](https://git.bilibili.co/go/twirp/blob/master/errors.go)
 for details, it is pretty straightforward.
 
 ### twirp.Error interface

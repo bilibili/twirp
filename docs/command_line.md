@@ -29,7 +29,7 @@ You should usually set import paths by using `option go_package` in your .proto
 files. A line like this:
 
 ```protobuf
-option go_package = "github.com/twitchtv/thisisanexample";
+option go_package = "git.bilibili.co/go/thisisanexample";
 ```
 
 will set things up properly. But if a file needs to be imported at different

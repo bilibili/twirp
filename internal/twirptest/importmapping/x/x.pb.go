@@ -15,7 +15,7 @@ package x
 import proto "github.com/golang/protobuf/proto"
 import fmt "fmt"
 import math "math"
-import _ "github.com/twitchtv/twirp/internal/twirptest/importmapping/y"
+import _ "git.bilibili.co/go/twirp/internal/twirptest/importmapping/y"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal

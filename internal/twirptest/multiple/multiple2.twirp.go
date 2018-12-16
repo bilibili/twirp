@@ -12,8 +12,8 @@ import http "net/http"
 
 import jsonpb "github.com/golang/protobuf/jsonpb"
 import proto "github.com/golang/protobuf/proto"
-import twirp "github.com/twitchtv/twirp"
-import ctxsetters "github.com/twitchtv/twirp/ctxsetters"
+import twirp "git.bilibili.co/go/twirp"
+import ctxsetters "git.bilibili.co/go/twirp/ctxsetters"
 
 // ==============
 // Svc2 Interface

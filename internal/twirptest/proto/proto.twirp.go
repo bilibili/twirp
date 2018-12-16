@@ -3,7 +3,7 @@
 
 /*
 Package proto is a generated twirp stub package.
-This code was generated with github.com/twitchtv/twirp/protoc-gen-twirp v5.5.0.
+This code was generated with git.bilibili.co/go/twirp/protoc-gen-twirp v5.5.0.
 
 Test to make sure that a package named proto doesn't break
 
@@ -22,8 +22,8 @@ import http "net/http"
 
 import jsonpb "github.com/golang/protobuf/jsonpb"
 import proto "github.com/golang/protobuf/proto"
-import twirp "github.com/twitchtv/twirp"
-import ctxsetters "github.com/twitchtv/twirp/ctxsetters"
+import twirp "git.bilibili.co/go/twirp"
+import ctxsetters "git.bilibili.co/go/twirp/ctxsetters"
 
 // Imports only used by utility functions:
 import io "io"

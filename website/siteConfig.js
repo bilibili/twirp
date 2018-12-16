@@ -45,7 +45,7 @@ const siteConfig = {
     },
     scripts: ['https://buttons.github.io/buttons.js'],
     // You may provide arbitrary config keys to be used as needed by your template.
-    repoUrl: 'https://github.com/twitchtv/twirp',
+    repoUrl: 'https://git.bilibili.co/go/twirp',
 };
 
 module.exports = siteConfig;

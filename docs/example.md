@@ -104,8 +104,8 @@ import (
     "context"
     "math/rand"
 
-    "github.com/twitchtv/twirp"
-    pb "github.com/twitchtv/twirpexample/rpc/haberdasher"
+    "git.bilibili.co/go/twirp"
+    pb "git.bilibili.co/go/twirpexample/rpc/haberdasher"
 )
 
 // Server implements the Haberdasher service
@@ -147,8 +147,8 @@ package main
 import (
     "net/http"
 
-    "github.com/twitchtv/twirpexample/internal/haberdasherserver"
-    "github.com/twitchtv/twirpexample/rpc/haberdasher"
+    "git.bilibili.co/go/twirpexample/internal/haberdasherserver"
+    "git.bilibili.co/go/twirpexample/rpc/haberdasher"
 )
 
 func main() {
@@ -185,7 +185,7 @@ import (
     "net/http"
     "os"
     "fmt"
-    "github.com/twitchtv/twirpexample/rpc/haberdasher"
+    "git.bilibili.co/go/twirpexample/rpc/haberdasher"
 )
 
 func main() {
