@@ -55,6 +55,14 @@ func StatusCode(ctx context.Context) (string, bool) {
 	return code, ok
 }
 
+// Request retrieves the request.
+// If it is known returns (req, true).
+// If it is not known, it returns (ni, false).
+func Request(ctx context.Context) (*http.Request, bool) {
+	req, ok := ctx.Value(contextkeys.RequestKey).(*http.Request)
+	return req, ok
+}
+
 // WithHTTPRequestHeaders stores an http.Header in a context.Context. When
 // using a Twirp-generated client, you can pass the returned context
 // into any of the request methods, and the stored header will be

@@ -30,8 +30,10 @@ import (
 	"git.bilibili.co/go/twirp/internal/gen/typemap"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
+	"github.com/golang/protobuf/protoc-gen-go/generator"
 	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
 	"github.com/pkg/errors"
+	"github.com/pseudomuto/protokit"
 )
 
 type twirp struct {
@@ -58,9 +60,54 @@ type twirp struct {
 	// the struct so we can write a header for the file that lists its inputs.
 	genFiles []*descriptor.FileDescriptorProto
 
+	// Map of all proto messages
+	messages map[string]*message
+
 	// Output buffer that holds the bytes we want to write out for a single file.
 	// Gets reset after working on a file.
 	output *bytes.Buffer
+}
+
+type message struct {
+	Name   string
+	Fields []field
+	Label  descriptor.FieldDescriptorProto_Label
+	Doc    string
+}
+
+type field struct {
+	Name  string
+	Type  string
+	Note  string
+	Doc   string
+	Label descriptor.FieldDescriptorProto_Label
+}
+
+func (f field) isRepeated() bool {
+	return f.Label == descriptor.FieldDescriptorProto_LABEL_REPEATED
+}
+
+func (f field) getType() (string, string) {
+	switch f.Type {
+	case "TYPE_STRING":
+		return "string", ""
+	case "TYPE_DOUBLE":
+		return "float", "64"
+	case "TYPE_FLOAT":
+		return "float", "32"
+	case "TYPE_INT32":
+		return "int", "32"
+	case "TYPE_INT64":
+		return "int", "64"
+	case "TYPE_UINT32":
+		return "uint", "32"
+	case "TYPE_UINT64":
+		return "uint", "64"
+	case "TYPE_BOOL":
+		return "bool", ""
+	default:
+		return "", ""
+	}
 }
 
 func newGenerator() *twirp {
@@ -69,6 +116,7 @@ func newGenerator() *twirp {
 		pkgNamesInUse:       make(map[string]bool),
 		importMap:           make(map[string]string),
 		fileToGoPackageName: make(map[*descriptor.FileDescriptorProto]string),
+		messages:            make(map[string]*message),
 		output:              bytes.NewBuffer(nil),
 	}
 
@@ -130,6 +178,7 @@ func (t *twirp) Generate(in *plugin.CodeGeneratorRequest) *plugin.CodeGeneratorR
 			t.fileToGoPackageName[f] = alias
 		}
 	}
+	t.scanAllMessages(in)
 	// Showtime! Generate the response.
 	resp := new(plugin.CodeGeneratorResponse)
 	for _, f := range t.genFiles {
@@ -139,6 +188,40 @@ func (t *twirp) Generate(in *plugin.CodeGeneratorRequest) *plugin.CodeGeneratorR
 		}
 	}
 	return resp
+}
+
+func (t *twirp) scanAllMessages(req *plugin.CodeGeneratorRequest) {
+	descriptors := protokit.ParseCodeGenRequest(req)
+
+	for _, d := range descriptors {
+		t.scanMessages(d)
+	}
+}
+
+func (t *twirp) scanMessages(d *protokit.FileDescriptor) {
+	for _, md := range d.GetMessages() {
+		fields := make([]field, len(md.GetMessageFields()))
+		for i, fd := range md.GetMessageFields() {
+			typeName := fd.GetTypeName()
+			if typeName == "" {
+				typeName = fd.GetType().String()
+			}
+
+			fields[i] = field{
+				Name:  fd.GetName(),
+				Type:  typeName,
+				Doc:   fd.GetComments().GetLeading(),
+				Note:  fd.GetComments().GetTrailing(),
+				Label: fd.GetLabel(),
+			}
+		}
+
+		t.messages[md.GetFullName()] = &message{
+			Name:   md.GetName(),
+			Doc:    md.GetComments().GetTrailing(),
+			Fields: fields,
+		}
+	}
 }
 
 func (t *twirp) registerPackageName(name string) (alias string) {
@@ -934,6 +1017,7 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 
 	t.P(`func (s *`, servStruct, `) ServeHTTP(resp `, t.pkgs["http"], `.ResponseWriter, req *`, t.pkgs["http"], `.Request) {`)
 	t.P(`  ctx := req.Context()`)
+	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithRequest(ctx, req)`)
 	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithPackageName(ctx, "`, pkgName, `")`)
 	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithServiceName(ctx, "`, servName, `")`)
 	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithResponseWriter(ctx, resp)`)
@@ -984,6 +1068,8 @@ func (t *twirp) generateServerMethod(service *descriptor.ServiceDescriptorProto,
 	t.P(`    s.serve`, methName, `JSON(ctx, resp, req)`)
 	t.P(`  case "application/protobuf":`)
 	t.P(`    s.serve`, methName, `Protobuf(ctx, resp, req)`)
+	t.P(`  case "application/x-www-form-urlencoded":`)
+	t.P(`    s.serve`, methName, `Form(ctx, resp, req)`)
 	t.P(`  default:`)
 	t.P(`    msg := `, t.pkgs["fmt"], `.Sprintf("unexpected Content-Type: %q", req.Header.Get("Content-Type"))`)
 	t.P(`    twerr := badRouteError(msg, req.Method, req.URL.Path)`)
@@ -993,6 +1079,7 @@ func (t *twirp) generateServerMethod(service *descriptor.ServiceDescriptorProto,
 	t.P()
 	t.generateServerJSONMethod(service, method)
 	t.generateServerProtobufMethod(service, method)
+	t.generateServerFormMethod(service, method)
 }
 
 func (t *twirp) generateServerJSONMethod(service *descriptor.ServiceDescriptorProto, method *descriptor.MethodDescriptorProto) {
@@ -1041,7 +1128,130 @@ func (t *twirp) generateServerJSONMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`  ctx = callResponsePrepared(ctx, s.hooks)`)
 	t.P()
 	t.P(`  var buf `, t.pkgs["bytes"], `.Buffer`)
-	t.P(`  marshaler := &`, t.pkgs["jsonpb"], `.Marshaler{OrigName: true}`)
+	t.P(`  marshaler := &`, t.pkgs["jsonpb"], `.Marshaler{OrigName: true, EmitDefaults: true }`)
+	t.P(`  if err = marshaler.Marshal(&buf, respContent); err != nil {`)
+	t.P(`    err = wrapErr(err, "failed to marshal json response")`)
+	t.P(`    s.writeError(ctx, resp, `, t.pkgs["twirp"], `.InternalErrorWith(err))`)
+	t.P(`    return`)
+	t.P(`  }`)
+	t.P()
+	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithStatusCode(ctx, `, t.pkgs["http"], `.StatusOK)`)
+	t.P(`  resp.Header().Set("Content-Type", "application/json")`)
+	t.P(`  resp.WriteHeader(`, t.pkgs["http"], `.StatusOK)`)
+	t.P()
+	t.P(`  respBytes := buf.Bytes()`)
+	t.P(`  if n, err := resp.Write(respBytes); err != nil {`)
+	t.P(`    msg := fmt.Sprintf("failed to write response, %d of %d bytes written: %s", n, len(respBytes), err.Error())`)
+	t.P(`    twerr := `, t.pkgs["twirp"], `.NewError(`, t.pkgs["twirp"], `.Unknown, msg)`)
+	t.P(`    callError(ctx, s.hooks, twerr)`)
+	t.P(`  }`)
+	t.P(`  callResponseSent(ctx, s.hooks)`)
+	t.P(`}`)
+	t.P()
+}
+
+func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorProto, method *descriptor.MethodDescriptorProto) {
+	servStruct := serviceStruct(service)
+	methName := stringutils.CamelCase(method.GetName())
+	t.P(`func (s *`, servStruct, `) serve`, methName, `Form(ctx `, t.pkgs["context"], `.Context, resp `, t.pkgs["http"], `.ResponseWriter, req *`, t.pkgs["http"], `.Request) {`)
+	t.P(`  var err error`)
+	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithMethodName(ctx, "`, methName, `")`)
+	t.P(`  ctx, err = callRequestRouted(ctx, s.hooks)`)
+	t.P(`  if err != nil {`)
+	t.P(`    s.writeError(ctx, resp, err)`)
+	t.P(`    return`)
+	t.P(`  }`)
+	t.P()
+	t.P(`  err = req.ParseForm()`)
+	t.P(`  if err != nil {`)
+	t.P(`    s.writeError(ctx, resp, err)`)
+	t.P(`    return`)
+	t.P(`  }`)
+	t.P()
+	t.P(`  reqContent := new(`, t.goTypeName(method.GetInputType()), `)`)
+
+	inputType := method.GetInputType()[1:]
+	fields := t.messages[inputType].Fields
+
+	t.P()
+
+	for _, field := range fields {
+		ft, fs := field.getType()
+
+		if ft == "" {
+			continue
+		}
+
+		t.P(`  if v, ok := req.Form["`, field.Name, `"]; ok {`)
+		if field.isRepeated() {
+			if ft == "string" {
+				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = v `)
+			} else {
+				t.P(`    vs := make([]`, ft, fs, `, 0, len(v))`)
+				t.P(`    for _, vv := range(v) {`)
+				if ft == "float" {
+					t.P(`      vvv, err := strconv.ParseFloat(vv, `, fs, `)`)
+				} else if ft == "bool" {
+					t.P(`      vvv, err := strconv.ParseBool(vv)`)
+				} else {
+					t.P(`      vvv, err := strconv.Parse`, generator.CamelCase(ft), `(vv, 10, `, fs, `)`)
+				}
+				t.P(`      if err != nil {`)
+				t.P(`        s.writeError(ctx, resp, twirp.InvalidArgumentError("`, field.Name, `", err.Error()))`)
+				t.P(`        return`)
+				t.P(`      }`)
+				t.P(`    vs = append(vs, `, ft, fs, `(vvv))`)
+				t.P(`    }`)
+				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = vs`)
+			}
+		} else {
+			if ft == "string" {
+				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = v[0] `)
+			} else {
+				if ft == "float" {
+					t.P(`    vv, err := strconv.ParseFloat(v[0], `, fs, `)`)
+				} else if ft == "bool" {
+					t.P(`    vv, err := strconv.ParseBool(v[0])`)
+				} else {
+					t.P(`    vv, err := strconv.Parse`, generator.CamelCase(ft), `(v[0], 10, `, fs, `)`)
+				}
+				t.P(`    if err != nil {`)
+				t.P(`      s.writeError(ctx, resp, twirp.InvalidArgumentError("`, field.Name, `", err.Error()))`)
+				t.P(`      return`)
+				t.P(`    }`)
+				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = `, ft, fs, `(vv)`)
+			}
+		}
+		t.P(`  }`)
+	}
+
+	t.P()
+	t.P(`  // Call service method`)
+	t.P(`  var respContent *`, t.goTypeName(method.GetOutputType()))
+	t.P(`  func() {`)
+	t.P(`    defer func() {`)
+	t.P(`      // In case of a panic, serve a 500 error and then panic.`)
+	t.P(`      if r := recover(); r != nil {`)
+	t.P(`        s.writeError(ctx, resp, `, t.pkgs["twirp"], `.InternalError("Internal service panic"))`)
+	t.P(`        panic(r)`)
+	t.P(`      }`)
+	t.P(`    }()`)
+	t.P(`    respContent, err = s.`, methName, `(ctx, reqContent)`)
+	t.P(`  }()`)
+	t.P()
+	t.P(`  if err != nil {`)
+	t.P(`    s.writeError(ctx, resp, err)`)
+	t.P(`    return`)
+	t.P(`  }`)
+	t.P(`  if respContent == nil {`)
+	t.P(`    s.writeError(ctx, resp, `, t.pkgs["twirp"], `.InternalError("received a nil *`, t.goTypeName(method.GetOutputType()), ` and nil error while calling `, methName, `. nil responses are not supported"))`)
+	t.P(`    return`)
+	t.P(`  }`)
+	t.P()
+	t.P(`  ctx = callResponsePrepared(ctx, s.hooks)`)
+	t.P()
+	t.P(`  var buf `, t.pkgs["bytes"], `.Buffer`)
+	t.P(`  marshaler := &`, t.pkgs["jsonpb"], `.Marshaler{OrigName: true, EmitDefaults: true }`)
 	t.P(`  if err = marshaler.Marshal(&buf, respContent); err != nil {`)
 	t.P(`    err = wrapErr(err, "failed to marshal json response")`)
 	t.P(`    s.writeError(ctx, resp, `, t.pkgs["twirp"], `.InternalErrorWith(err))`)
