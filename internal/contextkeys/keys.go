@@ -26,4 +26,5 @@ const (
 	RequestHeaderKey
 	ResponseWriterKey
 	RequestKey
+	ResponseKey
 )

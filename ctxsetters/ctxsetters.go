@@ -24,6 +24,7 @@ import (
 	"strconv"
 
 	"git.bilibili.co/go/twirp/internal/contextkeys"
+	"github.com/golang/protobuf/proto"
 )
 
 func WithMethodName(ctx context.Context, name string) context.Context {
@@ -48,4 +49,8 @@ func WithResponseWriter(ctx context.Context, w http.ResponseWriter) context.Cont
 
 func WithRequest(ctx context.Context, r *http.Request) context.Context {
 	return context.WithValue(ctx, contextkeys.RequestKey, r)
+}
+
+func WithResponse(ctx context.Context, resp proto.Message) context.Context {
+	return context.WithValue(ctx, contextkeys.ResponseKey, resp)
 }
