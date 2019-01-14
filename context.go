@@ -19,6 +19,7 @@ import (
 	"net/http"
 
 	"git.bilibili.co/go/twirp/internal/contextkeys"
+	"github.com/golang/protobuf/proto"
 )
 
 // MethodName extracts the name of the method being handled in the given
@@ -57,9 +58,17 @@ func StatusCode(ctx context.Context) (string, bool) {
 
 // Request retrieves the request.
 // If it is known returns (req, true).
-// If it is not known, it returns (ni, false).
+// If it is not known, it returns (nil, false).
 func Request(ctx context.Context) (*http.Request, bool) {
 	req, ok := ctx.Value(contextkeys.RequestKey).(*http.Request)
+	return req, ok
+}
+
+// Response retrieves the response.
+// If it is known returns (resp, true).
+// If it is not known, it returns (nil, false).
+func Response(ctx context.Context) (proto.Message, bool) {
+	req, ok := ctx.Value(contextkeys.ResponseKey).(proto.Message)
 	return req, ok
 }
 
