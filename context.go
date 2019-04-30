@@ -72,6 +72,18 @@ func Response(ctx context.Context) (proto.Message, bool) {
 	return req, ok
 }
 
+// AllowGET check whether allow the current request using post method.
+func AllowGET(ctx context.Context) bool {
+	allow, ok := ctx.Value(contextkeys.AllowGETKey).(bool)
+
+	return ok && allow
+}
+
+// WithAllowGET allow get method.
+func WithAllowGET(ctx context.Context, f bool) context.Context {
+	return context.WithValue(ctx, contextkeys.AllowGETKey, f)
+}
+
 // WithHTTPRequestHeaders stores an http.Header in a context.Context. When
 // using a Twirp-generated client, you can pass the returned context
 // into any of the request methods, and the stored header will be

@@ -27,4 +27,5 @@ const (
 	ResponseWriterKey
 	RequestKey
 	ResponseKey
+	AllowGETKey
 )
