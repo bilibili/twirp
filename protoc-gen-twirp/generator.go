@@ -1203,6 +1203,9 @@ func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorPr
 
 		t.P(`  if v, ok := req.Form["`, field.Name, `"]; ok {`)
 		if field.isRepeated() {
+			t.P(`    if len(v) == 1 {`)
+			t.P(`        v = strings.Split(v[0], ",")`)
+			t.P(`    }`)
 			if ft == "string" {
 				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = v `)
 			} else {
