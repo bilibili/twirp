@@ -21,7 +21,7 @@ file where the service was defined. The `<Service>` and `<Method>` names are
 CamelCased just as they would be in Go.
 
 For example, to call the `MakeHat` RPC method on the example
-[Haberdasher service](https://git.bilibili.co/go/twirp/wiki/Usage-Example:-Haberdasher)
+[Haberdasher service](https://github.com/bilibili/twirp/wiki/Usage-Example:-Haberdasher)
 the route would be:
 
 ```
@@ -34,7 +34,7 @@ The `Content-Type` header is required and must be either `application/json` or
 `application/protobuf`. JSON is easier for debugging (particularly when making
 requests with cURL), but Protobuf is better in almost every other way. Please
 use Protobuf in real code. See
-[Protobuf and JSON](https://git.bilibili.co/go/twirp/wiki/Protobuf-and-JSON)
+[Protobuf and JSON](https://github.com/bilibili/twirp/wiki/Protobuf-and-JSON)
 for more details.
 
 ### JSON serialization

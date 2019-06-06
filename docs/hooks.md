@@ -23,7 +23,7 @@ context.Context (possibly including a new value through the
 function).
 
 Check out
-[the godoc for `ServerHooks`](http://godoc.org/git.bilibili.co/go/twirp#ServerHooks)
+[the godoc for `ServerHooks`](http://godoc.org/github.com/bilibili/twirp#ServerHooks)
 for information on the specific callbacks. For an example hooks implementation,
-[`git.bilibili.co/go/twirp/hooks/statsd`](https://git.bilibili.co/go/twirp/blob/master/hooks/statsd/)
+[`github.com/bilibili/twirp/hooks/statsd`](https://github.com/bilibili/twirp/blob/master/hooks/statsd/)
 is a good tutorial.

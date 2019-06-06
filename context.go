@@ -18,7 +18,7 @@ import (
 	"errors"
 	"net/http"
 
-	"git.bilibili.co/go/twirp/internal/contextkeys"
+	"github.com/bilibili/twirp/internal/contextkeys"
 	"github.com/golang/protobuf/proto"
 )
 
