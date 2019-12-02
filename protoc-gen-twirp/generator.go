@@ -1068,7 +1068,7 @@ func (t *twirp) generateServerMethod(service *descriptor.ServiceDescriptorProto,
 	t.P(`    s.serve`, methName, `JSON(ctx, resp, req)`)
 	t.P(`  case "application/protobuf":`)
 	t.P(`    s.serve`, methName, `Protobuf(ctx, resp, req)`)
-	t.P(`  case "application/x-www-form-urlencoded":`)
+	t.P(`  case "application/x-www-form-urlencoded", "multipart/form-data":`)
 	t.P(`    s.serve`, methName, `Form(ctx, resp, req)`)
 	t.P(`  default:`)
 	t.P(`    if req.Method == "GET" {`)
