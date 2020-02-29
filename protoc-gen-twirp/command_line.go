@@ -15,6 +15,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -22,6 +23,7 @@ type commandLineParams struct {
 	importPrefix string            // String to prefix to imported package file names.
 	importMap    map[string]string // Mapping from .proto file name to import path.
 	paths        string            // Paths value, used to control file output directory
+	optionField  int32             // Protobuf extension filed for method option
 }
 
 // parseCommandLineParams breaks the comma-separated list of key=value pairs
@@ -52,6 +54,15 @@ func parseCommandLineParams(parameter string) (*commandLineParams, error) {
 		switch {
 		case k == "import_prefix":
 			clp.importPrefix = v
+		case k == "option_field":
+			i, err := strconv.ParseInt(v, 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid option_field: %v", err)
+			}
+			if i < 1000 {
+				return nil, fmt.Errorf("option_field must greater than 1000")
+			}
+			clp.optionField = int32(i)
 		// Support import map 'M' prefix per https://github.com/golang/protobuf/blob/6fb5325/protoc-gen-go/generator/generator.go#L497.
 		case len(k) > 0 && k[0] == 'M':
 			clp.importMap[k[1:]] = v // 1 is the length of 'M'.

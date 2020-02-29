@@ -49,8 +49,12 @@ type twirp struct {
 	importPrefix string            // String to prefix to imported package file names.
 	importMap    map[string]string // Mapping from .proto file name to import path.
 
+	methodOptionField int64
+
 	// Package output:
 	sourceRelativePaths bool // instruction on where to write output files
+
+	optionDesc *proto.ExtensionDesc
 
 	// Package naming:
 	genPkgName          string // Name of the package that we're generating
@@ -134,6 +138,15 @@ func (t *twirp) Generate(in *plugin.CodeGeneratorRequest) *plugin.CodeGeneratorR
 	t.genFiles = gen.FilesToGenerate(in)
 
 	t.sourceRelativePaths = params.paths == "source_relative"
+
+	if field := params.optionField; field > 0 {
+		t.optionDesc = &proto.ExtensionDesc{
+			ExtendedType:  (*descriptor.MethodOptions)(nil),
+			ExtensionType: (*uint32)(nil),
+			Field:         field,
+			Tag:           fmt.Sprintf("varint,%d,opt", field),
+		}
+	}
 
 	// Collect information on types.
 	t.reg = typemap.New(in.ProtoFile)
@@ -1054,6 +1067,26 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 	t.P()
 }
 
+func (t *twirp) getMethodOption(options *descriptor.MethodOptions) (option uint32) {
+	if t.optionDesc == nil {
+		return
+	}
+	if proto.HasExtension(options, t.optionDesc) {
+		ext, err := proto.GetExtension(options, t.optionDesc)
+		if err != nil {
+			gen.Fail("method option must be uint32")
+			return
+		}
+		if ext == nil {
+			return
+		}
+		if p, ok := ext.(*uint32); ok {
+			option = *p
+		}
+	}
+	return
+}
+
 func (t *twirp) generateServerMethod(service *descriptor.ServiceDescriptorProto, method *descriptor.MethodDescriptorProto) {
 	methName := stringutils.CamelCase(method.GetName())
 	servStruct := serviceStruct(service)
@@ -1063,6 +1096,9 @@ func (t *twirp) generateServerMethod(service *descriptor.ServiceDescriptorProto,
 	t.P(`  if i == -1 {`)
 	t.P(`    i = len(header)`)
 	t.P(`  }`)
+	if option := t.getMethodOption(method.GetOptions()); option > 0 {
+		t.P(`  ctx = ctxsetters.WithMethodOption(ctx, `, fmt.Sprint(option), `)`)
+	}
 	t.P(`  switch strings.TrimSpace(strings.ToLower(header[:i])) {`)
 	t.P(`  case "application/json":`)
 	t.P(`    s.serve`, methName, `JSON(ctx, resp, req)`)

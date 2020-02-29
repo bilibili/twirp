@@ -28,4 +28,5 @@ const (
 	RequestKey
 	ResponseKey
 	AllowGETKey
+	MethodOptionKey
 )
