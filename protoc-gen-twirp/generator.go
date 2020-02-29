@@ -48,6 +48,7 @@ type twirp struct {
 
 	importPrefix string            // String to prefix to imported package file names.
 	importMap    map[string]string // Mapping from .proto file name to import path.
+	prefix       string            // Prefix for rpc. Default is /twirp
 
 	methodOptionField int64
 
@@ -138,6 +139,12 @@ func (t *twirp) Generate(in *plugin.CodeGeneratorRequest) *plugin.CodeGeneratorR
 	t.genFiles = gen.FilesToGenerate(in)
 
 	t.sourceRelativePaths = params.paths == "source_relative"
+
+	if params.pathPrefix != "" {
+		t.prefix = params.pathPrefix
+	} else {
+		t.prefix = "/twirp"
+	}
 
 	if field := params.optionField; field > 0 {
 		t.optionDesc = &proto.ExtensionDesc{
@@ -1007,14 +1014,14 @@ func (t *twirp) generateServer(file *descriptor.FileDescriptorProto, service *de
 // pathPrefix returns the base path for all methods handled by a particular
 // service. It includes a trailing slash. (for example
 // "/twirp/twitch.example.Haberdasher/").
-func pathPrefix(file *descriptor.FileDescriptorProto, service *descriptor.ServiceDescriptorProto) string {
-	return fmt.Sprintf("/twirp/%s/", fullServiceName(file, service))
+func (t *twirp) pathPrefix(file *descriptor.FileDescriptorProto, service *descriptor.ServiceDescriptorProto) string {
+	return fmt.Sprintf("%s/%s/", t.prefix, fullServiceName(file, service))
 }
 
 // pathFor returns the complete path for requests to a particular method on a
 // particular service.
-func pathFor(file *descriptor.FileDescriptorProto, service *descriptor.ServiceDescriptorProto, method *descriptor.MethodDescriptorProto) string {
-	return pathPrefix(file, service) + stringutils.CamelCase(method.GetName())
+func (t *twirp) pathFor(file *descriptor.FileDescriptorProto, service *descriptor.ServiceDescriptorProto, method *descriptor.MethodDescriptorProto) string {
+	return t.pathPrefix(file, service) + stringutils.CamelCase(method.GetName())
 }
 
 func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDescriptorProto, service *descriptor.ServiceDescriptorProto) {
@@ -1025,7 +1032,7 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 	t.P(`// `, pathPrefixConst, ` is used for all URL paths on a twirp `, servName, ` server.`)
 	t.P(`// Requests are always: POST `, pathPrefixConst, `/method`)
 	t.P(`// It can be used in an HTTP mux to route twirp requests along with non-twirp requests on other routes.`)
-	t.P(`const `, pathPrefixConst, ` = `, strconv.Quote(pathPrefix(file, service)))
+	t.P(`const `, pathPrefixConst, ` = `, strconv.Quote(t.pathPrefix(file, service)))
 	t.P()
 
 	t.P(`func (s *`, servStruct, `) ServeHTTP(resp `, t.pkgs["http"], `.ResponseWriter, req *`, t.pkgs["http"], `.Request) {`)
@@ -1051,7 +1058,7 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 	t.P()
 	t.P(`  switch req.URL.Path {`)
 	for _, method := range service.Method {
-		path := pathFor(file, service, method)
+		path := t.pathFor(file, service, method)
 		methName := "serve" + stringutils.CamelCase(method.GetName())
 		t.P(`  case `, strconv.Quote(path), `:`)
 		t.P(`    s.`, methName, `(ctx, resp, req)`)

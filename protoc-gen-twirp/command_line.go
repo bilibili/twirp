@@ -21,6 +21,7 @@ import (
 
 type commandLineParams struct {
 	importPrefix string            // String to prefix to imported package file names.
+	pathPrefix   string            // Prefix to the rpc path, default is /twirp.
 	importMap    map[string]string // Mapping from .proto file name to import path.
 	paths        string            // Paths value, used to control file output directory
 	optionField  int32             // Protobuf extension filed for method option
@@ -54,6 +55,8 @@ func parseCommandLineParams(parameter string) (*commandLineParams, error) {
 		switch {
 		case k == "import_prefix":
 			clp.importPrefix = v
+		case k == "prefix":
+			clp.pathPrefix = "/" + strings.Trim(v, "/")
 		case k == "option_field":
 			i, err := strconv.ParseInt(v, 10, 32)
 			if err != nil {
