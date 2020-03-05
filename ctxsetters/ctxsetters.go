@@ -55,6 +55,6 @@ func WithResponse(ctx context.Context, resp proto.Message) context.Context {
 	return context.WithValue(ctx, contextkeys.ResponseKey, resp)
 }
 
-func WithMethodOption(ctx context.Context, option uint32) context.Context {
+func WithMethodOption(ctx context.Context, option string) context.Context {
 	return context.WithValue(ctx, contextkeys.MethodOptionKey, option)
 }

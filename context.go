@@ -65,10 +65,10 @@ func Request(ctx context.Context) (*http.Request, bool) {
 }
 
 // MethodOption retrieves the option of service method.
-// If it is known returns (uint32, true).
-// If it is not known, it returns (0, false).
-func MethodOption(ctx context.Context) (uint32, bool) {
-	option, ok := ctx.Value(contextkeys.MethodOptionKey).(uint32)
+// If it is known returns (string, true).
+// If it is not known, it returns ("", false).
+func MethodOption(ctx context.Context) (string, bool) {
+	option, ok := ctx.Value(contextkeys.MethodOptionKey).(string)
 	return option, ok
 }
 

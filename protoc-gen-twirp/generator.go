@@ -22,6 +22,7 @@ import (
 	"go/printer"
 	"go/token"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -50,12 +51,10 @@ type twirp struct {
 	importMap    map[string]string // Mapping from .proto file name to import path.
 	prefix       string            // Prefix for rpc. Default is /twirp
 
-	methodOptionField int64
+	methodOptionRegexp *regexp.Regexp
 
 	// Package output:
 	sourceRelativePaths bool // instruction on where to write output files
-
-	optionDesc *proto.ExtensionDesc
 
 	// Package naming:
 	genPkgName          string // Name of the package that we're generating
@@ -67,6 +66,8 @@ type twirp struct {
 
 	// Map of all proto messages
 	messages map[string]*message
+
+	methods map[string]*protokit.MethodDescriptor
 
 	// Output buffer that holds the bytes we want to write out for a single file.
 	// Gets reset after working on a file.
@@ -122,6 +123,7 @@ func newGenerator() *twirp {
 		importMap:           make(map[string]string),
 		fileToGoPackageName: make(map[*descriptor.FileDescriptorProto]string),
 		messages:            make(map[string]*message),
+		methods:             make(map[string]*protokit.MethodDescriptor),
 		output:              bytes.NewBuffer(nil),
 	}
 
@@ -146,14 +148,7 @@ func (t *twirp) Generate(in *plugin.CodeGeneratorRequest) *plugin.CodeGeneratorR
 		t.prefix = "/twirp"
 	}
 
-	if field := params.optionField; field > 0 {
-		t.optionDesc = &proto.ExtensionDesc{
-			ExtendedType:  (*descriptor.MethodOptions)(nil),
-			ExtensionType: (*uint32)(nil),
-			Field:         field,
-			Tag:           fmt.Sprintf("varint,%d,opt", field),
-		}
-	}
+	t.methodOptionRegexp = regexp.MustCompile(params.optionPrefix + `:([^:\s]+)`)
 
 	// Collect information on types.
 	t.reg = typemap.New(in.ProtoFile)
@@ -219,6 +214,12 @@ func (t *twirp) scanAllMessages(req *plugin.CodeGeneratorRequest) {
 }
 
 func (t *twirp) scanMessages(d *protokit.FileDescriptor) {
+	for _, sd := range d.GetServices() {
+		for _, md := range sd.GetMethods() {
+			t.methods[md.GetFullName()] = md
+		}
+	}
+
 	for _, md := range d.GetMessages() {
 		fields := make([]field, len(md.GetMessageFields()))
 		for i, fd := range md.GetMessageFields() {
@@ -1005,7 +1006,7 @@ func (t *twirp) generateServer(file *descriptor.FileDescriptorProto, service *de
 
 	// Methods.
 	for _, method := range service.Method {
-		t.generateServerMethod(service, method)
+		t.generateServerMethod(file, service, method)
 	}
 
 	t.generateServiceMetadataAccessors(file, service)
@@ -1074,27 +1075,20 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 	t.P()
 }
 
-func (t *twirp) getMethodOption(options *descriptor.MethodOptions) (option uint32) {
-	if t.optionDesc == nil {
+func (t *twirp) getMethodOption(fullName string) (option string) {
+	doc := t.methods[fullName].GetComments().GetTrailing()
+	if doc == "" {
 		return
 	}
-	if proto.HasExtension(options, t.optionDesc) {
-		ext, err := proto.GetExtension(options, t.optionDesc)
-		if err != nil {
-			gen.Fail("method option must be uint32")
-			return
-		}
-		if ext == nil {
-			return
-		}
-		if p, ok := ext.(*uint32); ok {
-			option = *p
-		}
+	matched := t.methodOptionRegexp.FindStringSubmatch(doc)
+	if matched == nil {
+		return
 	}
+	option = matched[1]
 	return
 }
 
-func (t *twirp) generateServerMethod(service *descriptor.ServiceDescriptorProto, method *descriptor.MethodDescriptorProto) {
+func (t *twirp) generateServerMethod(file *descriptor.FileDescriptorProto, service *descriptor.ServiceDescriptorProto, method *descriptor.MethodDescriptorProto) {
 	methName := stringutils.CamelCase(method.GetName())
 	servStruct := serviceStruct(service)
 	t.P(`func (s *`, servStruct, `) serve`, methName, `(ctx `, t.pkgs["context"], `.Context, resp `, t.pkgs["http"], `.ResponseWriter, req *`, t.pkgs["http"], `.Request) {`)
@@ -1103,9 +1097,12 @@ func (t *twirp) generateServerMethod(service *descriptor.ServiceDescriptorProto,
 	t.P(`  if i == -1 {`)
 	t.P(`    i = len(header)`)
 	t.P(`  }`)
-	if option := t.getMethodOption(method.GetOptions()); option > 0 {
-		t.P(`  ctx = ctxsetters.WithMethodOption(ctx, `, fmt.Sprint(option), `)`)
+
+	fullName := fmt.Sprintf("%s.%s.%s", file.GetPackage(), service.GetName(), method.GetName())
+	if option := t.getMethodOption(fullName); option != "" {
+		t.P(`  ctx = ctxsetters.WithMethodOption(ctx, "`, option, `")`)
 	}
+
 	t.P(`  switch strings.TrimSpace(strings.ToLower(header[:i])) {`)
 	t.P(`  case "application/json":`)
 	t.P(`    s.serve`, methName, `JSON(ctx, resp, req)`)
