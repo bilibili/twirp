@@ -160,3 +160,19 @@ func SetHTTPResponseHeader(ctx context.Context, key, value string) error {
 
 	return nil
 }
+
+// AddHTTPResponseHeader adds an HTTP header key-value pair using a context
+// provided by a twirp-generated server, or a child of that context.
+// The server will include the header in its response for that request context.
+func AddHTTPResponseHeader(ctx context.Context, key, value string) error {
+	if key == "Content-Type" {
+		return errors.New("header key can not be Content-Type")
+	}
+
+	responseWriter, ok := ctx.Value(contextkeys.ResponseWriterKey).(http.ResponseWriter)
+	if ok {
+		responseWriter.Header().Add(key, value)
+	} // invalid context is ignored, not an error, this is to allow easy unit testing with mock servers
+
+	return nil
+}
