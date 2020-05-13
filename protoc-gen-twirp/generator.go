@@ -1108,7 +1108,7 @@ func (t *twirp) generateServerMethod(file *descriptor.FileDescriptorProto, servi
 	t.P(`    s.serve`, methName, `JSON(ctx, resp, req)`)
 	t.P(`  case "application/protobuf":`)
 	t.P(`    s.serve`, methName, `Protobuf(ctx, resp, req)`)
-	t.P(`  case "application/x-www-form-urlencoded", "multipart/form-data":`)
+	t.P(`  case "application/x-www-form-urlencoded", "multipart/form-data", "application/xml", "text/xml":`)
 	t.P(`    s.serve`, methName, `Form(ctx, resp, req)`)
 	t.P(`  default:`)
 	t.P(`    if req.Method == "GET" {`)
