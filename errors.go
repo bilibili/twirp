@@ -41,7 +41,9 @@
 //
 package twirp
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Error represents an error in a Twirp service call.
 type Error interface {

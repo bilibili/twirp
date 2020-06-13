@@ -13,7 +13,13 @@
 
 package twirp
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+
+	"github.com/bilibili/twirp/ctxsetters"
+)
 
 // ServerHooks is a container for callbacks that can instrument a
 // Twirp-generated server. These callbacks all accept a context and return a
@@ -53,6 +59,113 @@ type ServerHooks struct {
 	// Error hook is called when an error occurs while handling a request. The
 	// Error is passed as argument to the hook.
 	Error func(context.Context, Error) context.Context
+}
+
+// CallRequestReceived call twirp.ServerHooks.RequestReceived if the hook is available
+func (h *ServerHooks) CallRequestReceived(ctx context.Context) (context.Context, error) {
+	if h == nil || h.RequestReceived == nil {
+		return ctx, nil
+	}
+	return h.RequestReceived(ctx)
+}
+
+// CallRequestRouted call twirp.ServerHooks.RequestRouted if the hook is available
+func (h *ServerHooks) CallRequestRouted(ctx context.Context) (context.Context, error) {
+	if h == nil || h.RequestRouted == nil {
+		return ctx, nil
+	}
+	return h.RequestRouted(ctx)
+}
+
+// CallResponsePrepared call twirp.ServerHooks.ResponsePrepared if the hook is available
+func (h *ServerHooks) CallResponsePrepared(ctx context.Context) context.Context {
+	if h == nil || h.ResponsePrepared == nil {
+		return ctx
+	}
+	return h.ResponsePrepared(ctx)
+}
+
+// CallResponseSent call twirp.ServerHooks.ResponseSent if the hook is available
+func (h *ServerHooks) CallResponseSent(ctx context.Context) {
+	if h == nil || h.ResponseSent == nil {
+		return
+	}
+	h.ResponseSent(ctx)
+}
+
+// CallError call twirp.ServerHooks.Error if the hook is available
+func (h *ServerHooks) CallError(ctx context.Context, err Error) context.Context {
+	if h == nil || h.Error == nil {
+		return ctx
+	}
+	return h.Error(ctx, err)
+}
+
+// WriteError writes Twirp errors in the response and triggers hooks.
+func (h *ServerHooks) WriteError(ctx context.Context, resp http.ResponseWriter, err error) {
+	// Non-twirp errors are wrapped as Internal (default)
+	twerr, ok := err.(Error)
+	if !ok {
+		twerr = InternalErrorWith(err)
+	}
+
+	statusCode := ServerHTTPStatusFromErrorCode(twerr.Code())
+	ctx = ctxsetters.WithStatusCode(ctx, statusCode)
+	ctx = h.CallError(ctx, twerr)
+
+	resp.Header().Set("Content-Type", "application/json") // Error responses are always JSON (instead of protobuf)
+	resp.WriteHeader(statusCode)                          // HTTP response status code
+
+	respBody := marshalErrorToJSON(twerr)
+	_, writeErr := resp.Write(respBody)
+	if writeErr != nil {
+		// We have three options here. We could log the error, call the Error
+		// hook, or just silently ignore the error.
+		//
+		// Logging is unacceptable because we don't have a user-controlled
+		// logger; writing out to stderr without permission is too rude.
+		//
+		// Calling the Error hook would confuse users: it would mean the Error
+		// hook got called twice for one request, which is likely to lead to
+		// duplicated log messages and metrics, no matter how well we document
+		// the behavior.
+		//
+		// Silently ignoring the error is our least-bad option. It's highly
+		// likely that the connection is broken and the original 'err' says
+		// so anyway.
+		_ = writeErr
+	}
+
+	h.CallResponseSent(ctx)
+}
+
+// marshalErrorToJSON returns JSON from a twirp.Error, that can be used as HTTP error response body.
+// If serialization fails, it will use a descriptive Internal error instead.
+func marshalErrorToJSON(twerr Error) []byte {
+	// make sure that msg is not too large
+	msg := twerr.Msg()
+	if len(msg) > 1e6 {
+		msg = msg[:1e6]
+	}
+
+	type twerrJSON struct {
+		Code string            `json:"code"`
+		Msg  string            `json:"msg"`
+		Meta map[string]string `json:"meta,omitempty"`
+	}
+
+	tj := twerrJSON{
+		Code: string(twerr.Code()),
+		Msg:  msg,
+		Meta: twerr.MetaMap(),
+	}
+
+	buf, err := json.Marshal(&tj)
+	if err != nil {
+		buf = []byte("{\"type\": \"" + Internal + "\", \"msg\": \"There was an error but it could not be serialized into JSON\"}") // fallback
+	}
+
+	return buf
 }
 
 // ChainHooks creates a new *ServerHooks which chains the callbacks in

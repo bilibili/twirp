@@ -17,10 +17,12 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha1"
 	"fmt"
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io"
 	"path"
 	"regexp"
 	"strconv"
@@ -164,10 +166,11 @@ func (t *twirp) Generate(in *plugin.CodeGeneratorRequest) *plugin.CodeGeneratorR
 	t.registerPackageName("json")
 	t.registerPackageName("jsonpb")
 	t.registerPackageName("proto")
-	t.registerPackageName("strconv")
 	t.registerPackageName("twirp")
 	t.registerPackageName("url")
 	t.registerPackageName("fmt")
+	t.registerPackageName("errors")
+	t.registerPackageName("strconv")
 
 	// Time to figure out package names of objects defined in protobuf. First,
 	// we'll figure out the name for the package we're generating.
@@ -303,18 +306,10 @@ func (t *twirp) generate(file *descriptor.FileDescriptorProto) *plugin.CodeGener
 	t.generateFileHeader(file)
 
 	t.generateImports(file)
-	if t.filesHandled == 0 {
-		t.generateUtilImports()
-	}
 
 	// For each service, generate client stubs and server
 	for i, service := range file.Service {
 		t.generateService(file, service, i)
-	}
-
-	// Util functions only generated once per package
-	if t.filesHandled == 0 {
-		t.generateUtils()
 	}
 
 	t.generateFileDescriptor(file)
@@ -364,6 +359,8 @@ func (t *twirp) generateImports(file *descriptor.FileDescriptorProto) {
 	t.P(`import `, t.pkgs["strings"], ` "strings"`)
 	t.P(`import `, t.pkgs["context"], ` "context"`)
 	t.P(`import `, t.pkgs["fmt"], ` "fmt"`)
+	t.P(`import `, t.pkgs["strconv"], ` "strconv"`)
+	t.P(`import `, t.pkgs["errors"], ` "errors"`)
 	t.P(`import `, t.pkgs["ioutil"], ` "io/ioutil"`)
 	t.P(`import `, t.pkgs["http"], ` "net/http"`)
 	t.P()
@@ -412,6 +409,11 @@ func (t *twirp) generateImports(file *descriptor.FileDescriptorProto) {
 	if len(deps) > 0 {
 		t.P()
 	}
+
+	t.P(`// If the request does not have any number filed, the strconv`)
+	t.P(`// is not needed. However, there is no easy way to drop it.`)
+	t.P(`var _ = `, t.pkgs["strconv"], `.IntSize`)
+	t.P()
 }
 
 func (t *twirp) generateUtilImports() {
@@ -926,24 +928,18 @@ func (t *twirp) generateClient(name string, file *descriptor.FileDescriptorProto
 
 	methCnt := strconv.Itoa(len(service.Method))
 	t.P(`type `, structName, ` struct {`)
-	t.P(`  client HTTPClient`)
+	t.P(`  client `, t.pkgs["twirp"], `.HTTPClient`)
 	t.P(`  urls   [`, methCnt, `]string`)
 	t.P(`}`)
 	t.P()
 	t.P(`// `, newClientFunc, ` creates a `, name, ` client that implements the `, servName, ` interface.`)
 	t.P(`// It communicates using `, name, ` and can be configured with a custom HTTPClient.`)
-	t.P(`func `, newClientFunc, `(addr string, client HTTPClient) `, servName, ` {`)
-	t.P(`  prefix := urlBase(addr) + `, pathPrefixConst)
+	t.P(`func `, newClientFunc, `(addr string, client `, t.pkgs["twirp"], `.HTTPClient) `, servName, ` {`)
+	t.P(`  prefix := addr + `, pathPrefixConst)
 	t.P(`  urls := [`, methCnt, `]string{`)
 	for _, method := range service.Method {
 		t.P(`    	prefix + "`, methodName(method), `",`)
 	}
-	t.P(`  }`)
-	t.P(`  if httpClient, ok := client.(*`, t.pkgs["http"], `.Client); ok {`)
-	t.P(`    return &`, structName, `{`)
-	t.P(`      client: withoutRedirects(httpClient),`)
-	t.P(`      urls:   urls,`)
-	t.P(`    }`)
 	t.P(`  }`)
 	t.P(`  return &`, structName, `{`)
 	t.P(`    client: client,`)
@@ -963,7 +959,7 @@ func (t *twirp) generateClient(name string, file *descriptor.FileDescriptorProto
 		t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithServiceName(ctx, "`, servName, `")`)
 		t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithMethodName(ctx, "`, methName, `")`)
 		t.P(`  out := new(`, outputType, `)`)
-		t.P(`  err := do`, name, `Request(ctx, c.client, c.urls[`, strconv.Itoa(i), `], in, out)`)
+		t.P(`  err := `, t.pkgs["twirp"], `.Do`, name, `Request(ctx, c.client, c.urls[`, strconv.Itoa(i), `], in, out)`)
 		t.P(`  if err != nil {`)
 		t.P(`    return nil, err`)
 		t.P(`  }`)
@@ -985,7 +981,7 @@ func (t *twirp) generateServer(file *descriptor.FileDescriptorProto, service *de
 	t.P()
 
 	// Constructor for server implementation
-	t.P(`func New`, servName, `Server(svc `, servName, `, hooks *`, t.pkgs["twirp"], `.ServerHooks) TwirpServer {`)
+	t.P(`func New`, servName, `Server(svc `, servName, `, hooks *`, t.pkgs["twirp"], `.ServerHooks) `, t.pkgs["twirp"], `.Server {`)
 	t.P(`  return &`, servStruct, `{`)
 	t.P(`    `, servName, `: svc,`)
 	t.P(`    hooks: hooks,`)
@@ -997,9 +993,22 @@ func (t *twirp) generateServer(file *descriptor.FileDescriptorProto, service *de
 	t.P(`// writeError writes an HTTP response with a valid Twirp error format, and triggers hooks.`)
 	t.P(`// If err is not a twirp.Error, it will get wrapped with twirp.InternalErrorWith(err)`)
 	t.P(`func (s *`, servStruct, `) writeError(ctx `, t.pkgs["context"], `.Context, resp `, t.pkgs["http"], `.ResponseWriter, err error) {`)
-	t.P(`  writeError(ctx, resp, err, s.hooks)`)
+	t.P(`  s.hooks.WriteError(ctx, resp, err)`)
 	t.P(`}`)
 	t.P()
+
+	// badRouteError
+	t.P(`// badRouteError is used when the twirp server cannot route a request`)
+	t.P(`func (s *`, servStruct, `) badRouteError(msg string, method, url string) `, t.pkgs["twirp"], `.Error {`)
+	t.P(`	err := twirp.NewError(twirp.BadRoute, msg)`)
+	t.P(`	err = err.WithMeta("twirp_invalid_route", method+" "+url)`)
+	t.P(`	return err`)
+	t.P(`}`)
+	t.P()
+
+	t.P(`func (s *`, servStruct, `) wrapErr(err error, msg string) error {`)
+	t.P(`	return errors.New(msg + ": " + err.Error())`)
+	t.P(`}`)
 
 	// Routing.
 	t.generateServerRouting(servStruct, file, service)
@@ -1044,7 +1053,7 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithResponseWriter(ctx, resp)`)
 	t.P()
 	t.P(`  var err error`)
-	t.P(`  ctx, err = callRequestReceived(ctx, s.hooks)`)
+	t.P(`  ctx, err = s.hooks.CallRequestReceived(ctx)`)
 	t.P(`  if err != nil {`)
 	t.P(`    s.writeError(ctx, resp, err)`)
 	t.P(`    return`)
@@ -1052,7 +1061,7 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 	t.P()
 	t.P(`  if req.Method != "POST" && !`, t.pkgs["twirp"], `.AllowGET(ctx) {`)
 	t.P(`    msg := `, t.pkgs["fmt"], `.Sprintf("unsupported method %q (only POST is allowed)", req.Method)`)
-	t.P(`    err = badRouteError(msg, req.Method, req.URL.Path)`)
+	t.P(`    err = s.badRouteError(msg, req.Method, req.URL.Path)`)
 	t.P(`    s.writeError(ctx, resp, err)`)
 	t.P(`    return`)
 	t.P(`  }`)
@@ -1067,7 +1076,7 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 	}
 	t.P(`  default:`)
 	t.P(`    msg := `, t.pkgs["fmt"], `.Sprintf("no handler for path %q", req.URL.Path)`)
-	t.P(`    err = badRouteError(msg, req.Method, req.URL.Path)`)
+	t.P(`    err = s.badRouteError(msg, req.Method, req.URL.Path)`)
 	t.P(`    s.writeError(ctx, resp, err)`)
 	t.P(`    return`)
 	t.P(`  }`)
@@ -1116,7 +1125,7 @@ func (t *twirp) generateServerMethod(file *descriptor.FileDescriptorProto, servi
 	t.P(`      return`)
 	t.P(`    }`)
 	t.P(`    msg := `, t.pkgs["fmt"], `.Sprintf("unexpected Content-Type: %q", req.Header.Get("Content-Type"))`)
-	t.P(`    twerr := badRouteError(msg, req.Method, req.URL.Path)`)
+	t.P(`    twerr := s.badRouteError(msg, req.Method, req.URL.Path)`)
 	t.P(`    s.writeError(ctx, resp, twerr)`)
 	t.P(`  }`)
 	t.P(`}`)
@@ -1133,7 +1142,7 @@ func (t *twirp) generateServerJSONMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`func (s *`, servStruct, `) serve`, methName, `JSON(ctx `, t.pkgs["context"], `.Context, resp `, t.pkgs["http"], `.ResponseWriter, req *`, t.pkgs["http"], `.Request) {`)
 	t.P(`  var err error`)
 	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithMethodName(ctx, "`, methName, `")`)
-	t.P(`  ctx, err = callRequestRouted(ctx, s.hooks)`)
+	t.P(`  ctx, err = s.hooks.CallRequestRouted(ctx)`)
 	t.P(`  if err != nil {`)
 	t.P(`    s.writeError(ctx, resp, err)`)
 	t.P(`    return`)
@@ -1142,7 +1151,7 @@ func (t *twirp) generateServerJSONMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`  reqContent := new(`, t.goTypeName(method.GetInputType()), `)`)
 	t.P(`  unmarshaler := `, t.pkgs["jsonpb"], `.Unmarshaler{AllowUnknownFields: true}`)
 	t.P(`  if err = unmarshaler.Unmarshal(req.Body, reqContent); err != nil {`)
-	t.P(`    err = wrapErr(err, "failed to parse request json")`)
+	t.P(`    err = s.wrapErr(err, "failed to parse request json")`)
 	t.P(`    twerr := `, t.pkgs["twirp"], `.NewError(`, t.pkgs["twirp"], `.InvalidArgument, err.Error())`)
 	t.P(`    twerr = twerr.WithMeta("cause", `, t.pkgs["fmt"], `.Sprintf("%T", err))`)
 	t.P(`    s.writeError(ctx, resp, twerr)`)
@@ -1173,7 +1182,7 @@ func (t *twirp) generateServerJSONMethod(service *descriptor.ServiceDescriptorPr
 	t.P()
 	t.P(`  ctx = ctxsetters.WithResponse(ctx, respContent)`)
 	t.P()
-	t.P(`  ctx = callResponsePrepared(ctx, s.hooks)`)
+	t.P(`  ctx = s.hooks.CallResponsePrepared(ctx)`)
 	t.P()
 	t.P(`  type httpBody interface {`)
 	t.P(`    GetContentType() string`)
@@ -1197,7 +1206,7 @@ func (t *twirp) generateServerJSONMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`    var buf `, t.pkgs["bytes"], `.Buffer`)
 	t.P(`    marshaler := &`, t.pkgs["jsonpb"], `.Marshaler{OrigName: true, EmitDefaults: true }`)
 	t.P(`    if err = marshaler.Marshal(&buf, respContent); err != nil {`)
-	t.P(`      err = wrapErr(err, "failed to marshal json response")`)
+	t.P(`      err = s.wrapErr(err, "failed to marshal json response")`)
 	t.P(`      s.writeError(ctx, resp, `, t.pkgs["twirp"], `.InternalErrorWith(err))`)
 	t.P(`      return`)
 	t.P(`    }`)
@@ -1211,9 +1220,9 @@ func (t *twirp) generateServerJSONMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`  if n, err := resp.Write(respBytes); err != nil {`)
 	t.P(`    msg := fmt.Sprintf("failed to write response, %d of %d bytes written: %s", n, len(respBytes), err.Error())`)
 	t.P(`    twerr := `, t.pkgs["twirp"], `.NewError(`, t.pkgs["twirp"], `.Unknown, msg)`)
-	t.P(`    callError(ctx, s.hooks, twerr)`)
+	t.P(`    s.hooks.CallError(ctx, twerr)`)
 	t.P(`  }`)
-	t.P(`  callResponseSent(ctx, s.hooks)`)
+	t.P(`  s.hooks.CallResponseSent(ctx)`)
 	t.P(`}`)
 	t.P()
 }
@@ -1224,7 +1233,7 @@ func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`func (s *`, servStruct, `) serve`, methName, `Form(ctx `, t.pkgs["context"], `.Context, resp `, t.pkgs["http"], `.ResponseWriter, req *`, t.pkgs["http"], `.Request) {`)
 	t.P(`  var err error`)
 	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithMethodName(ctx, "`, methName, `")`)
-	t.P(`  ctx, err = callRequestRouted(ctx, s.hooks)`)
+	t.P(`  ctx, err = s.hooks.CallRequestRouted(ctx)`)
 	t.P(`  if err != nil {`)
 	t.P(`    s.writeError(ctx, resp, err)`)
 	t.P(`    return`)
@@ -1321,7 +1330,7 @@ func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorPr
 	t.P()
 	t.P(`  ctx = ctxsetters.WithResponse(ctx, respContent)`)
 	t.P()
-	t.P(`  ctx = callResponsePrepared(ctx, s.hooks)`)
+	t.P(`  ctx = s.hooks.CallResponsePrepared(ctx)`)
 	t.P()
 	t.P(`  type httpBody interface {`)
 	t.P(`    GetContentType() string`)
@@ -1345,7 +1354,7 @@ func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`    var buf `, t.pkgs["bytes"], `.Buffer`)
 	t.P(`    marshaler := &`, t.pkgs["jsonpb"], `.Marshaler{OrigName: true, EmitDefaults: true }`)
 	t.P(`    if err = marshaler.Marshal(&buf, respContent); err != nil {`)
-	t.P(`      err = wrapErr(err, "failed to marshal json response")`)
+	t.P(`      err = s.wrapErr(err, "failed to marshal json response")`)
 	t.P(`      s.writeError(ctx, resp, `, t.pkgs["twirp"], `.InternalErrorWith(err))`)
 	t.P(`      return`)
 	t.P(`    }`)
@@ -1359,9 +1368,9 @@ func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`  if n, err := resp.Write(respBytes); err != nil {`)
 	t.P(`    msg := fmt.Sprintf("failed to write response, %d of %d bytes written: %s", n, len(respBytes), err.Error())`)
 	t.P(`    twerr := `, t.pkgs["twirp"], `.NewError(`, t.pkgs["twirp"], `.Unknown, msg)`)
-	t.P(`    callError(ctx, s.hooks, twerr)`)
+	t.P(`    s.hooks.CallError(ctx, twerr)`)
 	t.P(`  }`)
-	t.P(`  callResponseSent(ctx, s.hooks)`)
+	t.P(`  s.hooks.CallResponseSent(ctx)`)
 	t.P(`}`)
 	t.P()
 }
@@ -1373,7 +1382,7 @@ func (t *twirp) generateServerProtobufMethod(service *descriptor.ServiceDescript
 	t.P(`func (s *`, servStruct, `) serve`, methName, `Protobuf(ctx `, t.pkgs["context"], `.Context, resp `, t.pkgs["http"], `.ResponseWriter, req *`, t.pkgs["http"], `.Request) {`)
 	t.P(`  var err error`)
 	t.P(`  ctx = `, t.pkgs["ctxsetters"], `.WithMethodName(ctx, "`, methName, `")`)
-	t.P(`  ctx, err = callRequestRouted(ctx, s.hooks)`)
+	t.P(`  ctx, err = s.hooks.CallRequestRouted(ctx)`)
 	t.P(`  if err != nil {`)
 	t.P(`    s.writeError(ctx, resp, err)`)
 	t.P(`    return`)
@@ -1381,13 +1390,13 @@ func (t *twirp) generateServerProtobufMethod(service *descriptor.ServiceDescript
 	t.P()
 	t.P(`  buf, err := `, t.pkgs["ioutil"], `.ReadAll(req.Body)`)
 	t.P(`  if err != nil {`)
-	t.P(`    err = wrapErr(err, "failed to read request body")`)
+	t.P(`    err = s.wrapErr(err, "failed to read request body")`)
 	t.P(`    s.writeError(ctx, resp, `, t.pkgs["twirp"], `.InternalErrorWith(err))`)
 	t.P(`    return`)
 	t.P(`  }`)
 	t.P(`  reqContent := new(`, t.goTypeName(method.GetInputType()), `)`)
 	t.P(`  if err = `, t.pkgs["proto"], `.Unmarshal(buf, reqContent); err != nil {`)
-	t.P(`    err = wrapErr(err, "failed to parse request proto")`)
+	t.P(`    err = s.wrapErr(err, "failed to parse request proto")`)
 	t.P(`    twerr := `, t.pkgs["twirp"], `.NewError(`, t.pkgs["twirp"], `.InvalidArgument, err.Error())`)
 	t.P(`    twerr = twerr.WithMeta("cause", `, t.pkgs["fmt"], `.Sprintf("%T", err))`)
 	t.P(`    s.writeError(ctx, resp, twerr)`)
@@ -1418,7 +1427,7 @@ func (t *twirp) generateServerProtobufMethod(service *descriptor.ServiceDescript
 	t.P()
 	t.P(`  ctx = ctxsetters.WithResponse(ctx, respContent)`)
 	t.P()
-	t.P(`  ctx = callResponsePrepared(ctx, s.hooks)`)
+	t.P(`  ctx = s.hooks.CallResponsePrepared(ctx)`)
 	t.P()
 	t.P(`  type httpBody interface {`)
 	t.P(`    GetContentType() string`)
@@ -1441,7 +1450,7 @@ func (t *twirp) generateServerProtobufMethod(service *descriptor.ServiceDescript
 	t.P(`  } else {`)
 	t.P(`    respBytes, err = `, t.pkgs["proto"], `.Marshal(respContent)`)
 	t.P(`    if err != nil {`)
-	t.P(`      err = wrapErr(err, "failed to marshal proto response")`)
+	t.P(`      err = s.wrapErr(err, "failed to marshal proto response")`)
 	t.P(`      s.writeError(ctx, resp, `, t.pkgs["twirp"], `.InternalErrorWith(err))`)
 	t.P(`      return`)
 	t.P(`    }`)
@@ -1453,9 +1462,9 @@ func (t *twirp) generateServerProtobufMethod(service *descriptor.ServiceDescript
 	t.P(`  if n, err := resp.Write(respBytes); err != nil {`)
 	t.P(`    msg := fmt.Sprintf("failed to write response, %d of %d bytes written: %s", n, len(respBytes), err.Error())`)
 	t.P(`    twerr := `, t.pkgs["twirp"], `.NewError(`, t.pkgs["twirp"], `.Unknown, msg)`)
-	t.P(`    callError(ctx, s.hooks, twerr)`)
+	t.P(`    s.hooks.CallError(ctx, twerr)`)
 	t.P(`  }`)
-	t.P(`  callResponseSent(ctx, s.hooks)`)
+	t.P(`  s.hooks.CallResponseSent(ctx)`)
 	t.P(`}`)
 	t.P()
 }
@@ -1468,8 +1477,10 @@ func (t *twirp) generateServerProtobufMethod(service *descriptor.ServiceDescript
 // protoc-gen-gogo - with a different name! Twirp aims to be compatible with
 // both; the simplest way forward is to write the file descriptor again as
 // another variable that we control.
-func (t *twirp) serviceMetadataVarName() string {
-	return fmt.Sprintf("twirpFileDescriptor%d", t.filesHandled)
+func (t *twirp) serviceMetadataVarName(file *descriptor.FileDescriptorProto) string {
+	h := sha1.New()
+	io.WriteString(h, *file.Name)
+	return fmt.Sprintf("twirpFileDescriptor%dSHA%x", t.filesHandled, h.Sum(nil))
 }
 
 func (t *twirp) generateServiceMetadataAccessors(file *descriptor.FileDescriptorProto, service *descriptor.ServiceDescriptorProto) {
@@ -1481,7 +1492,7 @@ func (t *twirp) generateServiceMetadataAccessors(file *descriptor.FileDescriptor
 		}
 	}
 	t.P(`func (s *`, servStruct, `) ServiceDescriptor() ([]byte, int) {`)
-	t.P(`  return `, t.serviceMetadataVarName(), `, `, strconv.Itoa(index))
+	t.P(`  return `, t.serviceMetadataVarName(file), `, `, strconv.Itoa(index))
 	t.P(`}`)
 	t.P()
 	t.P(`func (s *`, servStruct, `) ProtocGenTwirpVersion() (string) {`)
@@ -1505,7 +1516,7 @@ func (t *twirp) generateFileDescriptor(file *descriptor.FileDescriptorProto) {
 	w.Close()
 	b = buf.Bytes()
 
-	v := t.serviceMetadataVarName()
+	v := t.serviceMetadataVarName(file)
 	t.P()
 	t.P("var ", v, " = []byte{")
 	t.P("	// ", fmt.Sprintf("%d", len(b)), " bytes of a gzipped FileDescriptorProto")
