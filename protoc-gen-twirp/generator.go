@@ -36,7 +36,6 @@ import (
 	"github.com/golang/protobuf/protoc-gen-go/generator"
 	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
 	"github.com/pkg/errors"
-	"github.com/pseudomuto/protokit"
 )
 
 type twirp struct {
@@ -66,37 +65,13 @@ type twirp struct {
 	// the struct so we can write a header for the file that lists its inputs.
 	genFiles []*descriptor.FileDescriptorProto
 
-	// Map of all proto messages
-	messages map[string]*message
-
-	methods map[string]*protokit.MethodDescriptor
-
 	// Output buffer that holds the bytes we want to write out for a single file.
 	// Gets reset after working on a file.
 	output *bytes.Buffer
 }
 
-type message struct {
-	Name   string
-	Fields []field
-	Label  descriptor.FieldDescriptorProto_Label
-	Doc    string
-}
-
-type field struct {
-	Name  string
-	Type  string
-	Note  string
-	Doc   string
-	Label descriptor.FieldDescriptorProto_Label
-}
-
-func (f field) isRepeated() bool {
-	return f.Label == descriptor.FieldDescriptorProto_LABEL_REPEATED
-}
-
-func (f field) getType() (string, string) {
-	switch f.Type {
+func getFieldType(t string) (string, string) {
+	switch t {
 	case "TYPE_STRING":
 		return "string", ""
 	case "TYPE_DOUBLE":
@@ -124,8 +99,6 @@ func newGenerator() *twirp {
 		pkgNamesInUse:       make(map[string]bool),
 		importMap:           make(map[string]string),
 		fileToGoPackageName: make(map[*descriptor.FileDescriptorProto]string),
-		messages:            make(map[string]*message),
-		methods:             make(map[string]*protokit.MethodDescriptor),
 		output:              bytes.NewBuffer(nil),
 	}
 
@@ -196,7 +169,6 @@ func (t *twirp) Generate(in *plugin.CodeGeneratorRequest) *plugin.CodeGeneratorR
 			t.fileToGoPackageName[f] = alias
 		}
 	}
-	t.scanAllMessages(in)
 	// Showtime! Generate the response.
 	resp := new(plugin.CodeGeneratorResponse)
 	for _, f := range t.genFiles {
@@ -206,46 +178,6 @@ func (t *twirp) Generate(in *plugin.CodeGeneratorRequest) *plugin.CodeGeneratorR
 		}
 	}
 	return resp
-}
-
-func (t *twirp) scanAllMessages(req *plugin.CodeGeneratorRequest) {
-	descriptors := protokit.ParseCodeGenRequest(req)
-
-	for _, d := range descriptors {
-		t.scanMessages(d)
-	}
-}
-
-func (t *twirp) scanMessages(d *protokit.FileDescriptor) {
-	for _, sd := range d.GetServices() {
-		for _, md := range sd.GetMethods() {
-			t.methods[md.GetFullName()] = md
-		}
-	}
-
-	for _, md := range d.GetMessages() {
-		fields := make([]field, len(md.GetMessageFields()))
-		for i, fd := range md.GetMessageFields() {
-			typeName := fd.GetTypeName()
-			if typeName == "" {
-				typeName = fd.GetType().String()
-			}
-
-			fields[i] = field{
-				Name:  fd.GetName(),
-				Type:  typeName,
-				Doc:   fd.GetComments().GetLeading(),
-				Note:  fd.GetComments().GetTrailing(),
-				Label: fd.GetLabel(),
-			}
-		}
-
-		t.messages[md.GetFullName()] = &message{
-			Name:   md.GetName(),
-			Doc:    md.GetComments().GetTrailing(),
-			Fields: fields,
-		}
-	}
 }
 
 func (t *twirp) registerPackageName(name string) (alias string) {
@@ -1084,19 +1016,6 @@ func (t *twirp) generateServerRouting(servStruct string, file *descriptor.FileDe
 	t.P()
 }
 
-func (t *twirp) getMethodOption(fullName string) (option string) {
-	doc := t.methods[fullName].GetComments().GetTrailing()
-	if doc == "" {
-		return
-	}
-	matched := t.methodOptionRegexp.FindStringSubmatch(doc)
-	if matched == nil {
-		return
-	}
-	option = matched[1]
-	return
-}
-
 func (t *twirp) generateServerMethod(file *descriptor.FileDescriptorProto, service *descriptor.ServiceDescriptorProto, method *descriptor.MethodDescriptorProto) {
 	methName := stringutils.CamelCase(method.GetName())
 	servStruct := serviceStruct(service)
@@ -1107,9 +1026,11 @@ func (t *twirp) generateServerMethod(file *descriptor.FileDescriptorProto, servi
 	t.P(`    i = len(header)`)
 	t.P(`  }`)
 
-	fullName := fmt.Sprintf("%s.%s.%s", file.GetPackage(), service.GetName(), method.GetName())
-	if option := t.getMethodOption(fullName); option != "" {
-		t.P(`  ctx = ctxsetters.WithMethodOption(ctx, "`, option, `")`)
+	if mc, err := t.reg.MethodComments(file, service, method); err == nil {
+		matched := t.methodOptionRegexp.FindStringSubmatch(mc.Trailing)
+		if len(matched) == 1 {
+			t.P(`  ctx = ctxsetters.WithMethodOption(ctx, "`, matched[1], `")`)
+		}
 	}
 
 	t.P(`  switch strings.TrimSpace(strings.ToLower(header[:i])) {`)
@@ -1246,26 +1167,25 @@ func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorPr
 	t.P(`  }`)
 	t.P()
 	t.P(`  reqContent := new(`, t.goTypeName(method.GetInputType()), `)`)
-
-	inputType := method.GetInputType()[1:]
-	fields := t.messages[inputType].Fields
-
 	t.P()
 
-	for _, field := range fields {
-		ft, fs := field.getType()
+	inputType := method.GetInputType()
+	message := t.reg.MessageDefinition(inputType)
+
+	for _, field := range message.Descriptor.Field {
+		ft, fs := getFieldType(field.Type.String())
 
 		if ft == "" {
 			continue
 		}
 
-		t.P(`  if v, ok := req.Form["`, field.Name, `"]; ok {`)
-		if field.isRepeated() {
+		t.P(`  if v, ok := req.Form["`, *field.Name, `"]; ok {`)
+		if *field.Label == descriptor.FieldDescriptorProto_LABEL_REPEATED {
 			t.P(`    if len(v) == 1 {`)
 			t.P(`        v = strings.Split(v[0], ",")`)
 			t.P(`    }`)
 			if ft == "string" {
-				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = v `)
+				t.P(`    reqContent.`, generator.CamelCase(*field.Name), ` = v `)
 			} else {
 				t.P(`    vs := make([]`, ft, fs, `, 0, len(v))`)
 				t.P(`    for _, vv := range(v) {`)
@@ -1277,16 +1197,16 @@ func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorPr
 					t.P(`      vvv, err := strconv.Parse`, generator.CamelCase(ft), `(vv, 10, `, fs, `)`)
 				}
 				t.P(`      if err != nil {`)
-				t.P(`        s.writeError(ctx, resp, twirp.InvalidArgumentError("`, field.Name, `", err.Error()))`)
+				t.P(`        s.writeError(ctx, resp, twirp.InvalidArgumentError("`, *field.Name, `", err.Error()))`)
 				t.P(`        return`)
 				t.P(`      }`)
 				t.P(`    vs = append(vs, `, ft, fs, `(vvv))`)
 				t.P(`    }`)
-				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = vs`)
+				t.P(`    reqContent.`, generator.CamelCase(*field.Name), ` = vs`)
 			}
 		} else {
 			if ft == "string" {
-				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = v[0] `)
+				t.P(`    reqContent.`, generator.CamelCase(*field.Name), ` = v[0] `)
 			} else {
 				if ft == "float" {
 					t.P(`    vv, err := strconv.ParseFloat(v[0], `, fs, `)`)
@@ -1296,10 +1216,10 @@ func (t *twirp) generateServerFormMethod(service *descriptor.ServiceDescriptorPr
 					t.P(`    vv, err := strconv.Parse`, generator.CamelCase(ft), `(v[0], 10, `, fs, `)`)
 				}
 				t.P(`    if err != nil {`)
-				t.P(`      s.writeError(ctx, resp, twirp.InvalidArgumentError("`, field.Name, `", err.Error()))`)
+				t.P(`      s.writeError(ctx, resp, twirp.InvalidArgumentError("`, *field.Name, `", err.Error()))`)
 				t.P(`      return`)
 				t.P(`    }`)
-				t.P(`    reqContent.`, generator.CamelCase(field.Name), ` = `, ft, fs, `(vv)`)
+				t.P(`    reqContent.`, generator.CamelCase(*field.Name), ` = `, ft, fs, `(vv)`)
 			}
 		}
 		t.P(`  }`)
