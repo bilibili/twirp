@@ -585,7 +585,7 @@ func (t *twirp) generateServerMethod(file *descriptor.FileDescriptorProto, servi
 
 	if mc, err := t.reg.MethodComments(file, service, method); err == nil {
 		matched := t.methodOptionRegexp.FindStringSubmatch(mc.Trailing)
-		if len(matched) == 1 {
+		if len(matched) == 2 {
 			t.P(`  ctx = ctxsetters.WithMethodOption(ctx, "`, matched[1], `")`)
 		}
 	}
