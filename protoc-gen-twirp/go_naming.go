@@ -17,8 +17,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/bilibili/twirp/protoc-gen-twirp/internal/gen/stringutils"
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
-	"github.com/bilibili/twirp/internal/gen/stringutils"
 )
 
 // goPackageOption interprets the file's go_package option.

@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bilibili/twirp/internal/gen"
+	"github.com/bilibili/twirp/protoc-gen-twirp/internal/gen"
 )
 
 func main() {

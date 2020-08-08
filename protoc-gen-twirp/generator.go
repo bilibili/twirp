@@ -28,9 +28,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bilibili/twirp/internal/gen"
-	"github.com/bilibili/twirp/internal/gen/stringutils"
-	"github.com/bilibili/twirp/internal/gen/typemap"
+	"github.com/bilibili/twirp/protoc-gen-twirp/internal/gen"
+	"github.com/bilibili/twirp/protoc-gen-twirp/internal/gen/stringutils"
+	"github.com/bilibili/twirp/protoc-gen-twirp/internal/gen/typemap"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
 	"github.com/golang/protobuf/protoc-gen-go/generator"

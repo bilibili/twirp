@@ -51,9 +51,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bilibili/twirp/protoc-gen-twirp/internal/gen/stringutils"
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
 	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
-	"github.com/bilibili/twirp/internal/gen/stringutils"
 )
 
 // Each type we import as a protocol buffer (other than FileDescriptorProto) needs
@@ -414,8 +414,8 @@ func wrapServices(file *descriptor.FileDescriptorProto) (sl []*ServiceDescriptor
 		sd := &ServiceDescriptor{
 			common:                 common{file},
 			ServiceDescriptorProto: svc,
-			Index: i,
-			Path:  fmt.Sprintf("%d,%d", servicePath, i),
+			Index:                  i,
+			Path:                   fmt.Sprintf("%d,%d", servicePath, i),
 		}
 		for j, method := range svc.Method {
 			md := &MethodDescriptor{
