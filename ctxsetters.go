@@ -11,50 +11,49 @@
 // express or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-// Package ctxsetters is an implementation detail for twirp generated code, used
+// ctxsetters is an implementation detail for twirp generated code, used
 // by the generated servers to set values in contexts for later access with the
 // twirp package's accessors.
 //
-// Do not use ctxsetters outside of twirp's generated code.
-package ctxsetters
+// DO NOT USE CTXSETTERS OUTSIDE OF TWIRP'S GENERATED CODE.
+package twirp
 
 import (
 	"context"
 	"net/http"
 	"strconv"
 
-	"github.com/bilibili/twirp/internal/contextkeys"
 	"github.com/golang/protobuf/proto"
 )
 
 func WithMethodName(ctx context.Context, name string) context.Context {
-	return context.WithValue(ctx, contextkeys.MethodNameKey, name)
+	return context.WithValue(ctx, MethodNameKey, name)
 }
 
 func WithServiceName(ctx context.Context, name string) context.Context {
-	return context.WithValue(ctx, contextkeys.ServiceNameKey, name)
+	return context.WithValue(ctx, ServiceNameKey, name)
 }
 
 func WithPackageName(ctx context.Context, name string) context.Context {
-	return context.WithValue(ctx, contextkeys.PackageNameKey, name)
+	return context.WithValue(ctx, PackageNameKey, name)
 }
 
 func WithStatusCode(ctx context.Context, code int) context.Context {
-	return context.WithValue(ctx, contextkeys.StatusCodeKey, strconv.Itoa(code))
+	return context.WithValue(ctx, StatusCodeKey, strconv.Itoa(code))
 }
 
 func WithResponseWriter(ctx context.Context, w http.ResponseWriter) context.Context {
-	return context.WithValue(ctx, contextkeys.ResponseWriterKey, w)
+	return context.WithValue(ctx, ResponseWriterKey, w)
 }
 
 func WithRequest(ctx context.Context, r *http.Request) context.Context {
-	return context.WithValue(ctx, contextkeys.RequestKey, r)
+	return context.WithValue(ctx, RequestKey, r)
 }
 
 func WithResponse(ctx context.Context, resp proto.Message) context.Context {
-	return context.WithValue(ctx, contextkeys.ResponseKey, resp)
+	return context.WithValue(ctx, ResponseKey, resp)
 }
 
 func WithMethodOption(ctx context.Context, option string) context.Context {
-	return context.WithValue(ctx, contextkeys.MethodOptionKey, option)
+	return context.WithValue(ctx, MethodOptionKey, option)
 }

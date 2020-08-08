@@ -17,8 +17,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-
-	"github.com/bilibili/twirp/ctxsetters"
 )
 
 // ServerHooks is a container for callbacks that can instrument a
@@ -110,7 +108,7 @@ func (h *ServerHooks) WriteError(ctx context.Context, resp http.ResponseWriter, 
 	}
 
 	statusCode := ServerHTTPStatusFromErrorCode(twerr.Code())
-	ctx = ctxsetters.WithStatusCode(ctx, statusCode)
+	ctx = WithStatusCode(ctx, statusCode)
 	ctx = h.CallError(ctx, twerr)
 
 	resp.Header().Set("Content-Type", "application/json") // Error responses are always JSON (instead of protobuf)

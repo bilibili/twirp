@@ -18,21 +18,35 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/bilibili/twirp/internal/contextkeys"
 	"github.com/golang/protobuf/proto"
+)
+
+type contextKey int
+
+const (
+	MethodNameKey contextKey = 1 + iota
+	ServiceNameKey
+	PackageNameKey
+	StatusCodeKey
+	RequestHeaderKey
+	ResponseWriterKey
+	RequestKey
+	ResponseKey
+	AllowGETKey
+	MethodOptionKey
 )
 
 // MethodName extracts the name of the method being handled in the given
 // context. If it is not known, it returns ("", false).
 func MethodName(ctx context.Context) (string, bool) {
-	name, ok := ctx.Value(contextkeys.MethodNameKey).(string)
+	name, ok := ctx.Value(MethodNameKey).(string)
 	return name, ok
 }
 
 // ServiceName extracts the name of the service handling the given context. If
 // it is not known, it returns ("", false).
 func ServiceName(ctx context.Context) (string, bool) {
-	name, ok := ctx.Value(contextkeys.ServiceNameKey).(string)
+	name, ok := ctx.Value(ServiceNameKey).(string)
 	return name, ok
 }
 
@@ -44,7 +58,7 @@ func ServiceName(ctx context.Context) (string, bool) {
 // Note that the protobuf package name can be very different than the go package
 // name; the two are unrelated.
 func PackageName(ctx context.Context) (string, bool) {
-	name, ok := ctx.Value(contextkeys.PackageNameKey).(string)
+	name, ok := ctx.Value(PackageNameKey).(string)
 	return name, ok
 }
 
@@ -52,7 +66,7 @@ func PackageName(ctx context.Context) (string, bool) {
 // If it is known returns (status, true).
 // If it is not known, it returns ("", false).
 func StatusCode(ctx context.Context) (string, bool) {
-	code, ok := ctx.Value(contextkeys.StatusCodeKey).(string)
+	code, ok := ctx.Value(StatusCodeKey).(string)
 	return code, ok
 }
 
@@ -60,7 +74,7 @@ func StatusCode(ctx context.Context) (string, bool) {
 // If it is known returns (req, true).
 // If it is not known, it returns (nil, false).
 func Request(ctx context.Context) (*http.Request, bool) {
-	req, ok := ctx.Value(contextkeys.RequestKey).(*http.Request)
+	req, ok := ctx.Value(RequestKey).(*http.Request)
 	return req, ok
 }
 
@@ -68,7 +82,7 @@ func Request(ctx context.Context) (*http.Request, bool) {
 // If it is known returns (string, true).
 // If it is not known, it returns ("", false).
 func MethodOption(ctx context.Context) (string, bool) {
-	option, ok := ctx.Value(contextkeys.MethodOptionKey).(string)
+	option, ok := ctx.Value(MethodOptionKey).(string)
 	return option, ok
 }
 
@@ -76,20 +90,20 @@ func MethodOption(ctx context.Context) (string, bool) {
 // If it is known returns (resp, true).
 // If it is not known, it returns (nil, false).
 func Response(ctx context.Context) (proto.Message, bool) {
-	req, ok := ctx.Value(contextkeys.ResponseKey).(proto.Message)
+	req, ok := ctx.Value(ResponseKey).(proto.Message)
 	return req, ok
 }
 
 // AllowGET check whether allow the current request using post method.
 func AllowGET(ctx context.Context) bool {
-	allow, ok := ctx.Value(contextkeys.AllowGETKey).(bool)
+	allow, ok := ctx.Value(AllowGETKey).(bool)
 
 	return ok && allow
 }
 
 // WithAllowGET allow get method.
 func WithAllowGET(ctx context.Context, f bool) context.Context {
-	return context.WithValue(ctx, contextkeys.AllowGETKey, f)
+	return context.WithValue(ctx, AllowGETKey, f)
 }
 
 // WithHTTPRequestHeaders stores an http.Header in a context.Context. When
@@ -124,11 +138,11 @@ func WithHTTPRequestHeaders(ctx context.Context, h http.Header) (context.Context
 		copy(copied[k], vv)
 	}
 
-	return context.WithValue(ctx, contextkeys.RequestHeaderKey, copied), nil
+	return context.WithValue(ctx, RequestHeaderKey, copied), nil
 }
 
 func HTTPRequestHeaders(ctx context.Context) (http.Header, bool) {
-	h, ok := ctx.Value(contextkeys.RequestHeaderKey).(http.Header)
+	h, ok := ctx.Value(RequestHeaderKey).(http.Header)
 	return h, ok
 }
 
@@ -153,7 +167,7 @@ func SetHTTPResponseHeader(ctx context.Context, key, value string) error {
 		return errors.New("header key can not be Content-Type")
 	}
 
-	responseWriter, ok := ctx.Value(contextkeys.ResponseWriterKey).(http.ResponseWriter)
+	responseWriter, ok := ctx.Value(ResponseWriterKey).(http.ResponseWriter)
 	if ok {
 		responseWriter.Header().Set(key, value)
 	} // invalid context is ignored, not an error, this is to allow easy unit testing with mock servers
@@ -169,7 +183,7 @@ func AddHTTPResponseHeader(ctx context.Context, key, value string) error {
 		return errors.New("header key can not be Content-Type")
 	}
 
-	responseWriter, ok := ctx.Value(contextkeys.ResponseWriterKey).(http.ResponseWriter)
+	responseWriter, ok := ctx.Value(ResponseWriterKey).(http.ResponseWriter)
 	if ok {
 		responseWriter.Header().Add(key, value)
 	} // invalid context is ignored, not an error, this is to allow easy unit testing with mock servers
